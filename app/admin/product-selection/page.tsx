@@ -20,12 +20,13 @@ export default async function ProductSelectionPage() {
         rel="stylesheet"
       />
 
-      <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
+      <div dangerouslySetInnerHTML={{ __html: getHtmlContent() }} />
     </>
   );
 }
 
-const htmlContent = `
+function getHtmlContent() {
+  return `
 <style>
   body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
   
@@ -262,12 +263,7 @@ const htmlContent = `
   </datalist>
 
   <script>
-    ${scriptContent}
-  </script>
-</div>
-`;
 
-const scriptContent = `
 // --- DATA STRUCTURE ---
 let appState = {
   meta: {
@@ -1008,5 +1004,8 @@ async function generatePDF() {
 
   doc.save(\`Contract_Specs_\${appState.meta.jobNumber}.pdf\`);
 }
+  </script>
+</div>
 `;
+}
 
