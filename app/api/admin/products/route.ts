@@ -34,6 +34,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q") ?? "";
 
+    console.log("Product search query:", q);
+
     const where =
       q.trim().length === 0
         ? {}
@@ -61,11 +63,14 @@ export async function GET(request: Request) {
       take: 50,
     });
 
+    console.log("Found products:", products.length);
+
     return NextResponse.json({ products });
   } catch (error) {
     console.error("Error fetching products:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to fetch products", products: [] },
+      { error: "Failed to fetch products", details: errorMessage, products: [] },
       { status: 500 }
     );
   }
