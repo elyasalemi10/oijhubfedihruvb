@@ -18,6 +18,7 @@ type ProductForm = {
   productDetails: string;
   price: string;
   imageFile: File | null;
+  imagePreview: string | null;
 };
 
 const AREA_OPTIONS: Area[] = ["Kitchen", "Bedroom", "Living Room", "Patio"];
@@ -34,6 +35,7 @@ export default function CreateProductForm() {
       productDetails: "",
       price: "",
       imageFile: null,
+      imagePreview: null,
     },
   ]);
   const [saving, setSaving] = useState(false);
@@ -57,6 +59,7 @@ export default function CreateProductForm() {
         productDetails: "",
         price: "",
         imageFile: null,
+        imagePreview: null,
       },
     ]);
   };
@@ -115,7 +118,8 @@ export default function CreateProductForm() {
           form.manufacturerDescription.trim()
         );
         formData.append("productDetails", form.productDetails.trim());
-        formData.append("price", form.price.trim());
+        const cleanPrice = form.price.trim();
+        formData.append("price", cleanPrice);
         formData.append("image", compressedFile);
 
         const res = await fetch("/api/admin/products", {
@@ -267,17 +271,28 @@ export default function CreateProductForm() {
                   <label className="block text-sm font-medium text-slate-700">
                     Price
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                    value={form.price}
-                    onChange={(e) =>
-                      updateForm(form.id, { price: e.target.value })
-                    }
-                    placeholder="e.g. 199.99"
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                      $
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      pattern="^[0-9]*\\.?[0-9]{0,2}$"
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 pl-7 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                      value={form.price}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (/^[0-9]*\\.?[0-9]{0,2}$/.test(v) || v === "") {
+                          updateForm(form.id, { price: v });
+                        }
+                      }}
+                      placeholder="e.g. 199.99"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Numbers only; $ is prefixed automatically.
+                  </p>
                 </div>
               </div>
 
@@ -287,11 +302,13 @@ export default function CreateProductForm() {
                     Image<span className="text-red-600">*</span>
                   </label>
                   <div className="border-2 border-dashed border-slate-300 rounded-lg p-4 flex flex-col items-center justify-center gap-2 bg-slate-50">
-                    {form.imageFile ? (
-                      <div className="relative w-full max-w-[120px] aspect-[4/3] bg-slate-200 rounded-md flex items-center justify-center">
-                        <span className="text-xs text-slate-500">
-                          Image selected
-                        </span>
+                    {form.imagePreview ? (
+                      <div className="relative w-full max-w-[160px] aspect-[4/3] bg-slate-200 rounded-md overflow-hidden">
+                        <img
+                          src={form.imagePreview}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
                       </div>
                     ) : (
                       <p className="text-sm text-slate-500 text-center">
@@ -301,11 +318,13 @@ export default function CreateProductForm() {
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
                         updateForm(form.id, {
-                          imageFile: e.target.files?.[0] ?? null,
-                        })
-                      }
+                          imageFile: file,
+                          imagePreview: file ? URL.createObjectURL(file) : null,
+                        });
+                      }}
                       className="w-full text-sm"
                       required={!form.imageFile}
                     />

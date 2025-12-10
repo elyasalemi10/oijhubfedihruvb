@@ -1,5 +1,11 @@
 import { PrismaClient } from "@prisma/client";
 
+// Disable prepared statements for pgBouncer/Supabase pooler to avoid
+// "prepared statement ... already exists" errors.
+if (!process.env.PRISMA_DISABLE_PREPARED_STATEMENTS) {
+  process.env.PRISMA_DISABLE_PREPARED_STATEMENTS = "true";
+}
+
 declare global {
   // eslint-disable-next-line no-var
   var prismaGlobal: PrismaClient | undefined;
