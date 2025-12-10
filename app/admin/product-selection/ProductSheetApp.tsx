@@ -301,11 +301,19 @@ export default function ProductSheetApp() {
                       <p style={{ fontSize: "0.85rem", color: "#555", marginTop: "0.25rem" }}>
                         {product.description}
                       </p>
-                      {product.price !== null && (
-                        <p style={{ fontSize: "0.85rem", color: "#111", marginTop: "0.2rem", fontWeight: 600 }}>
-                          ${product.price.toFixed(2)}
-                        </p>
-                      )}
+                      {typeof product.price === "number" &&
+                        Number.isFinite(product.price) && (
+                          <p
+                            style={{
+                              fontSize: "0.85rem",
+                              color: "#111",
+                              marginTop: "0.2rem",
+                              fontWeight: 600,
+                            }}
+                          >
+                            ${product.price.toFixed(2)}
+                          </p>
+                        )}
                       {product.productDetails && (
                         <p style={{ fontSize: "0.8rem", color: "#777", marginTop: "0.2rem" }}>
                           {product.productDetails}
