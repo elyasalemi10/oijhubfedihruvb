@@ -77,66 +77,80 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const formData = await request.formData();
+  try {
+    const formData = await request.formData();
 
-  const name = formData.get("name")?.toString() || "";
-  const area = formData.get("area")?.toString() || "";
-  const description = formData.get("description")?.toString() || "";
-  const manufacturerDescription =
-    formData.get("manufacturerDescription")?.toString() || "";
-  const productDetails = formData.get("productDetails")?.toString() || "";
-  const priceRaw = formData.get("price")?.toString() || "";
-  const image = formData.get("image") as File | null;
+    const name = formData.get("name")?.toString() || "";
+    const area = formData.get("area")?.toString() || "";
+    const description = formData.get("description")?.toString() || "";
+    const manufacturerDescription =
+      formData.get("manufacturerDescription")?.toString() || "";
+    const productDetails = formData.get("productDetails")?.toString() || "";
+    const priceRaw = formData.get("price")?.toString() || "";
+    const image = formData.get("image") as File | null;
 
-  if (!name.trim()) {
+    if (!name.trim()) {
+      return NextResponse.json(
+        { error: "Product name is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!area || !AREA_PREFIX[area]) {
+      return NextResponse.json({ error: "Area is required." }, { status: 400 });
+    }
+
+    if (!description.trim()) {
+      return NextResponse.json(
+        { error: "Description is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!image) {
+      return NextResponse.json(
+        { error: "Image is required." },
+        { status: 400 }
+      );
+    }
+
+    const code = await nextCodeForArea(area);
+    const buffer = Buffer.from(await image.arrayBuffer());
+    const key = `products/${AREA_PREFIX[area]}/${code}-${Date.now()}-${
+      image.name || "image"
+    }`;
+
+    await uploadToR2({
+      key,
+      body: buffer,
+      contentType: image.type || "application/octet-stream",
+    });
+
+    const price = priceRaw ? Number(priceRaw) : null;
+
+    const product = await prisma.product.create({
+      data: {
+        code,
+        name,
+        area,
+        description,
+        manufacturerDescription: manufacturerDescription || null,
+        productDetails: productDetails || null,
+        price: price !== null && !Number.isNaN(price) ? price : null,
+        imageUrl: getPublicUrl(key),
+      },
+    });
+
+    return NextResponse.json({ product });
+  } catch (error: any) {
+    console.error("Error creating product:", error);
     return NextResponse.json(
-      { error: "Product name is required." },
-      { status: 400 }
+      {
+        error: "Failed to create product",
+        details: error?.message || "Unknown error",
+      },
+      { status: 500 }
     );
   }
-
-  if (!area || !AREA_PREFIX[area]) {
-    return NextResponse.json({ error: "Area is required." }, { status: 400 });
-  }
-
-  if (!description.trim()) {
-    return NextResponse.json(
-      { error: "Description is required." },
-      { status: 400 }
-    );
-  }
-
-  if (!image) {
-    return NextResponse.json({ error: "Image is required." }, { status: 400 });
-  }
-
-  const code = await nextCodeForArea(area);
-  const buffer = Buffer.from(await image.arrayBuffer());
-  const key = `products/${AREA_PREFIX[area]}/${code}-${Date.now()}-${
-    image.name || "image"
-  }`;
-
-  await uploadToR2({
-    key,
-    body: buffer,
-    contentType: image.type || "application/octet-stream",
-  });
-
-  const price = priceRaw ? Number(priceRaw) : null;
-
-  const product = await prisma.product.create({
-    data: {
-      code,
-      name,
-      area,
-      description,
-      manufacturerDescription: manufacturerDescription || null,
-      productDetails: productDetails || null,
-      price: price !== null && !Number.isNaN(price) ? price : null,
-      imageUrl: getPublicUrl(key),
-    },
-  });
-
-  return NextResponse.json({ product });
 }
 
