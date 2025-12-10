@@ -1,77 +1,41 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-const CATEGORIES = [
-  "Kitchen",
-  "Bathroom",
-  "Bedroom",
-  "Living Room",
-  "Laundry",
-  "Balcony",
-  "Other",
-] as const;
-
-type Category = (typeof CATEGORIES)[number];
-
-type Product = {
+type ApiProduct = {
   id: string;
-  category: Category;
   code: string;
+  name: string;
+  area: string;
   description: string;
-  manufacturerDescription: string;
-  productDetails: string;
-  areaDescription: string;
+  manufacturerDescription: string | null;
+  productDetails: string | null;
+  price: number | null;
+  imageUrl: string;
+};
+
+type SelectedProduct = {
+  id: string;
+  code: string;
+  name: string;
+  area: string;
+  description: string;
+  manufacturerDescription: string | null;
+  productDetails: string | null;
+  price: number | null;
+  imageUrl: string;
   quantity: string;
-  price: string;
   notes: string;
-  image: string | null; // base64 (no prefix)
-  imagePreview: string | null; // data url for preview
 };
 
 type Message = { type: "success" | "error"; text: string };
 
 const API_BASE = "/api/admin/product-selection";
-const PLACEHOLDER_IMAGE = "https://placehold.co/600x600?text=No+Image";
-
-function createEmptyProduct(): Product {
-  return {
-    id: crypto.randomUUID(),
-    category: "Bathroom",
-    code: "",
-    description: "",
-    manufacturerDescription: "",
-    productDetails: "",
-    areaDescription: "",
-    quantity: "",
-    price: "",
-    notes: "",
-    image: null,
-    imagePreview: null,
-  };
-}
-
-function buildProductPayload(products: Product[]) {
-  return products
-    .filter((p) => p.code.trim() || p.description.trim())
-    .map((p) => ({
-      category: p.category,
-      code: p.code,
-      description: p.description,
-      manufacturerDescription: p.manufacturerDescription,
-      productDetails: p.productDetails,
-      areaDescription: p.areaDescription,
-      quantity: p.quantity,
-      price: p.price,
-      notes: p.notes,
-      image: p.image,
-    }));
-}
 
 export default function ProductSheetApp() {
   const [message, setMessage] = useState<Message | null>(null);
-  const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [loadingProducts, setLoadingProducts] = useState(false);
 
   const [address, setAddress] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -80,108 +44,93 @@ export default function ProductSheetApp() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [email, setEmail] = useState("");
 
-  const [products, setProducts] = useState<Product[]>([createEmptyProduct()]);
+  const [search, setSearch] = useState("");
+  const [products, setProducts] = useState<ApiProduct[]>([]);
+  const [selected, setSelected] = useState<SelectedProduct[]>([]);
 
-  const productsByCategory = useMemo(() => {
-    return CATEGORIES.reduce((acc, cat) => {
-      const filtered = products.filter((p) => p.category === cat);
-      if (filtered.length > 0) acc[cat] = filtered;
+  const productsByArea = useMemo(() => {
+    return products.reduce<Record<string, ApiProduct[]>>((acc, p) => {
+      acc[p.area] = acc[p.area] ? [...acc[p.area], p] : [p];
       return acc;
-    }, {} as Record<Category, Product[]>);
+    }, {});
   }, [products]);
 
-  const addProduct = () => {
-    if (products.length >= 50) {
-      setMessage({ type: "error", text: "Maximum 50 products allowed" });
-      return;
-    }
-    setProducts((prev) => [...prev, createEmptyProduct()]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const fetchProducts = async () => {
+      setLoadingProducts(true);
+      try {
+        const resp = await fetch(
+          `/api/admin/products${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+          { signal: controller.signal }
+        );
+        if (!resp.ok) throw new Error("Failed to fetch products");
+        const data = await resp.json();
+        setProducts(data.products || []);
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === "AbortError")) {
+          setMessage({
+            type: "error",
+            text: err instanceof Error ? err.message : "Failed to fetch products",
+          });
+        }
+      } finally {
+        setLoadingProducts(false);
+      }
+    };
+    fetchProducts();
+    return () => controller.abort();
+  }, [search]);
+
+  const toggleSelect = (p: ApiProduct) => {
+    setSelected((prev) => {
+      const exists = prev.find((s) => s.id === p.id);
+      if (exists) {
+        return prev.filter((s) => s.id !== p.id);
+      }
+      return [
+        ...prev,
+        {
+          ...p,
+          quantity: "",
+          notes: "",
+        },
+      ];
+    });
   };
 
-  const removeProduct = (id: string) => {
-    if (products.length <= 1) {
-      setMessage({ type: "error", text: "At least one product required" });
-      return;
-    }
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-  };
-
-  const updateProduct = (
+  const updateSelected = (
     id: string,
-    field: keyof Product,
-    value: string | null
+    field: keyof Pick<SelectedProduct, "quantity" | "notes">,
+    value: string
   ) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, [field]: value } : p))
+    setSelected((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, [field]: value } : s))
     );
   };
 
-  const handleImageUpload = (id: string, file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64 = e.target?.result as string;
-      const base64Data = base64.split(",")[1];
-      setProducts((prev) =>
-        prev.map((p) =>
-          p.id === id
-            ? { ...p, image: base64Data, imagePreview: base64 }
-            : p
-        )
-      );
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const validate = (payloadProducts: ReturnType<typeof buildProductPayload>) => {
+  const validate = () => {
     if (!address.trim()) return "Address is required";
-    if (payloadProducts.length === 0)
-      return "At least one product with code or description is required";
+    if (selected.length === 0) return "Select at least one product";
     return null;
   };
 
-  const saveProductsToDb = async () => {
-    const payloadProducts = buildProductPayload(products);
-    const error = validate(payloadProducts);
-    if (error) {
-      setMessage({ type: "error", text: error });
-      return;
-    }
-
-    setSaving(true);
-    setMessage(null);
-
-    try {
-      const resp = await fetch(`${API_BASE}/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ products: payloadProducts }),
-      });
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.error || err.details || "Failed to save products");
-      }
-
-      const result = await resp.json();
-      const count = result?.products?.length ?? payloadProducts.length;
-      setMessage({
-        type: "success",
-        text: `Saved ${count} product${count === 1 ? "" : "s"} to the database.`,
-      });
-    } catch (err) {
-      setMessage({
-        type: "error",
-        text: err instanceof Error ? err.message : "Failed to save products",
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
+  const buildPayloadProducts = () =>
+    selected.map((p) => ({
+      category: p.area,
+      code: p.code,
+      description: p.description,
+      manufacturerDescription: p.manufacturerDescription,
+      productDetails: p.productDetails,
+      areaDescription: p.area,
+      quantity: p.quantity,
+      price: p.price?.toString() ?? "",
+      notes: p.notes,
+      image: null, // skipping image base64 to keep payload small
+    }));
 
   const generateDocument = async () => {
-    const payloadProducts = buildProductPayload(products);
-    const error = validate(payloadProducts);
+    const error = validate();
     if (error) {
       setMessage({ type: "error", text: error });
       return;
@@ -191,6 +140,7 @@ export default function ProductSheetApp() {
     setMessage(null);
 
     try {
+      const payloadProducts = buildPayloadProducts();
       const resp = await fetch(`${API_BASE}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -320,204 +270,104 @@ export default function ProductSheetApp() {
         <div className="card">
           <div className="flex justify-between items-center mb-4">
             <h2 className="card-title" style={{ margin: 0 }}>
-              📦 Products ({products.length}/50)
+              📦 Products from database
             </h2>
-            <button
-              className="btn-secondary"
-              onClick={addProduct}
-              disabled={products.length >= 50}
-            >
-              + Add Product
-            </button>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search products by name/code/description"
+              style={{ minWidth: "240px" }}
+            />
           </div>
 
-          {products.map((product, index) => (
-            <div key={product.id} className="product-card">
-              <div className="product-header">
-                <span className="product-title">Product #{index + 1}</span>
-                <button
-                  className="btn-danger btn-sm"
-                  onClick={() => removeProduct(product.id)}
-                >
-                  ✕ Remove
-                </button>
-              </div>
+          {loadingProducts && <p className="text-sm text-gray-500">Loading products...</p>}
 
+          {!loadingProducts && products.length === 0 && (
+            <p className="text-sm text-gray-500">No products found. Create products first.</p>
+          )}
+
+          {Object.keys(productsByArea).map((area) => (
+            <div key={area} className="product-card">
+              <div className="product-header">
+                <span className="product-title">{area}</span>
+              </div>
               <div className="grid grid-3">
-                <div className="field">
-                  <label>Category *</label>
-                  <select
-                    value={product.category}
-                    onChange={(e) =>
-                      updateProduct(product.id, "category", e.target.value)
-                    }
-                  >
-                    {CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Code</label>
-                  <input
-                    value={product.code}
-                    onChange={(e) =>
-                      updateProduct(product.id, "code", e.target.value)
-                    }
-                    placeholder="Product code"
-                  />
-                </div>
-                <div className="field">
-                  <label>Description</label>
-                  <input
-                    value={product.description}
-                    onChange={(e) =>
-                      updateProduct(product.id, "description", e.target.value)
-                    }
-                    placeholder="Description"
-                  />
-                </div>
-                <div className="field span-2">
-                  <label>Manufacturer Description</label>
-                  <textarea
-                    value={product.manufacturerDescription}
-                    onChange={(e) =>
-                      updateProduct(
-                        product.id,
-                        "manufacturerDescription",
-                        e.target.value
-                      )
-                    }
-                    placeholder="Manufacturer description"
-                  />
-                </div>
-                <div className="field">
-                  <label>Product Details</label>
-                  <input
-                    value={product.productDetails}
-                    onChange={(e) =>
-                      updateProduct(product.id, "productDetails", e.target.value)
-                    }
-                    placeholder="Details"
-                  />
-                </div>
-                <div className="field span-2">
-                  <label>Area Description</label>
-                  <input
-                    value={product.areaDescription}
-                    onChange={(e) =>
-                      updateProduct(
-                        product.id,
-                        "areaDescription",
-                        e.target.value
-                      )
-                    }
-                    placeholder="Area where product will be used"
-                  />
-                </div>
-                <div className="field">
-                  <label>Quantity</label>
-                  <input
-                    value={product.quantity}
-                    onChange={(e) =>
-                      updateProduct(product.id, "quantity", e.target.value)
-                    }
-                    placeholder="Qty"
-                  />
-                </div>
-                <div className="field">
-                  <label>Price</label>
-                  <input
-                    value={product.price}
-                    onChange={(e) =>
-                      updateProduct(product.id, "price", e.target.value)
-                    }
-                    placeholder="$0.00"
-                  />
-                </div>
-                <div className="field">
-                  <label>Notes</label>
-                  <input
-                    value={product.notes}
-                    onChange={(e) =>
-                      updateProduct(product.id, "notes", e.target.value)
-                    }
-                    placeholder="Notes"
-                  />
-                </div>
-                <div className="field span-3">
-                  <label>Image (optional)</label>
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleImageUpload(product.id, file);
-                      }}
-                      style={{ maxWidth: "250px" }}
-                    />
-                    {product.imagePreview ? (
-                      <div style={{ position: "relative" }}>
-                        <img
-                          src={product.imagePreview}
-                          alt="Preview"
-                          className="image-preview"
-                        />
+                {productsByArea[area].map((product) => {
+                  const isSelected = selected.some((s) => s.id === product.id);
+                  return (
+                    <div key={product.id} className="field" style={{ borderBottom: "1px solid #eee", paddingBottom: "0.75rem", marginBottom: "0.75rem" }}>
+                      <label>{product.code} — {product.name || product.description}</label>
+                      <p style={{ fontSize: "0.85rem", color: "#555", marginTop: "0.25rem" }}>
+                        {product.description}
+                      </p>
+                      {product.productDetails && (
+                        <p style={{ fontSize: "0.8rem", color: "#777", marginTop: "0.2rem" }}>
+                          {product.productDetails}
+                        </p>
+                      )}
+                      <div className="flex gap-2" style={{ marginTop: "0.5rem" }}>
                         <button
-                          className="btn-danger btn-sm"
-                          style={{
-                            position: "absolute",
-                            top: -8,
-                            right: -8,
-                            borderRadius: "50%",
-                            padding: "2px 6px",
-                          }}
-                          onClick={() => {
-                            updateProduct(product.id, "image", null);
-                            updateProduct(product.id, "imagePreview", null);
-                          }}
+                          className="btn-secondary btn-sm"
+                          onClick={() => toggleSelect(product)}
                         >
-                          ✕
+                          {isSelected ? "Remove" : "Add"}
                         </button>
                       </div>
-                    ) : (
-                      <div className="image-placeholder">🖼</div>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
 
-        {Object.keys(productsByCategory).length > 0 && (
-          <div className="card summary">
-            <h2 className="card-title" style={{ color: "#2e7d32" }}>
-              📋 Products by Category
-            </h2>
-            <ul className="summary-list">
-              {Object.entries(productsByCategory).map(([cat, prods]) => (
-                <li key={cat}>
-                  <strong>{cat}:</strong> {prods.length} product
-                  {prods.length !== 1 ? "s" : ""}
-                </li>
+        {selected.length > 0 && (
+          <div className="card">
+            <h2 className="card-title">✅ Selected products</h2>
+            <div className="grid grid-3">
+              {selected.map((item) => (
+                <div key={item.id} className="product-card">
+                  <div className="product-header">
+                    <span className="product-title">
+                      {item.code} — {item.name || item.description}
+                    </span>
+                    <button
+                      className="btn-danger btn-sm"
+                      onClick={() => toggleSelect(item)}
+                    >
+                      ✕ Remove
+                    </button>
+                  </div>
+                  <p style={{ fontSize: "0.9rem", color: "#555" }}>{item.description}</p>
+                  {item.productDetails && (
+                    <p style={{ fontSize: "0.85rem", color: "#777" }}>{item.productDetails}</p>
+                  )}
+                  <div className="grid" style={{ marginTop: "0.5rem" }}>
+                    <div className="field">
+                      <label>Quantity</label>
+                      <input
+                        value={item.quantity}
+                        onChange={(e) => updateSelected(item.id, "quantity", e.target.value)}
+                        placeholder="Qty"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Notes</label>
+                      <input
+                        value={item.notes}
+                        onChange={(e) => updateSelected(item.id, "notes", e.target.value)}
+                        placeholder="Notes/placement"
+                      />
+                    </div>
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         )}
 
         <div className="flex justify-end gap-2">
-          <button
-            className="btn-secondary"
-            onClick={saveProductsToDb}
-            disabled={saving || generating}
-            style={{ padding: "0.75rem 1.5rem" }}
-          >
-            {saving ? "Saving..." : "💾 Save products to DB"}
-          </button>
           <button
             className="btn-primary"
             onClick={generateDocument}
