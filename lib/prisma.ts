@@ -1,10 +1,11 @@
-import { PrismaClient } from "@prisma/client";
-
-// Disable prepared statements for pgBouncer/Supabase pooler to avoid
-// "prepared statement ... already exists" errors.
+// Ensure the env flag is set BEFORE loading PrismaClient (important for pgBouncer)
 if (!process.env.PRISMA_DISABLE_PREPARED_STATEMENTS) {
   process.env.PRISMA_DISABLE_PREPARED_STATEMENTS = "true";
 }
+
+// Lazy-require Prisma after env is set to avoid prepared statement errors
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { PrismaClient } = require("@prisma/client") as typeof import("@prisma/client");
 
 declare global {
   // eslint-disable-next-line no-var

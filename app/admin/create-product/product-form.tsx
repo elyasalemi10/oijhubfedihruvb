@@ -278,14 +278,20 @@ export default function CreateProductForm() {
                     <input
                       type="text"
                       inputMode="decimal"
-                      pattern="^[0-9]*\\.?[0-9]{0,2}$"
                       className="w-full rounded-md border border-slate-300 px-3 py-2 pl-7 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                       value={form.price}
                       onChange={(e) => {
-                        const v = e.target.value;
-                        if (/^[0-9]*\\.?[0-9]{0,2}$/.test(v) || v === "") {
-                          updateForm(form.id, { price: v });
+                        const raw = e.target.value;
+                        let cleaned = raw.replace(/[^\d.]/g, "");
+                        const parts = cleaned.split(".");
+                        if (parts.length > 2) {
+                          cleaned = `${parts[0]}.${parts.slice(1).join("")}`;
                         }
+                        if (cleaned.includes(".")) {
+                          const [int, dec] = cleaned.split(".");
+                          cleaned = `${int}.${(dec || "").slice(0, 2)}`;
+                        }
+                        updateForm(form.id, { price: cleaned });
                       }}
                       placeholder="e.g. 199.99"
                     />
