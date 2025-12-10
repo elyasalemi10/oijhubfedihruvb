@@ -64,7 +64,14 @@ export default function ProductSheetApp() {
           `/api/admin/products${search ? `?q=${encodeURIComponent(search)}` : ""}`,
           { signal: controller.signal }
         );
-        if (!resp.ok) throw new Error("Failed to fetch products");
+        if (!resp.ok) {
+          const errBody = await resp.json().catch(() => ({}));
+          throw new Error(
+            errBody?.error ||
+              errBody?.details ||
+              `Failed to fetch products (${resp.status})`
+          );
+        }
         const data = await resp.json();
         setProducts(data.products || []);
       } catch (err) {
