@@ -9,10 +9,11 @@ const { PrismaClient } = require("@prisma/client") as typeof import("@prisma/cli
 
 declare global {
   // eslint-disable-next-line no-var
-  var prismaGlobal: PrismaClient | undefined;
+  var prismaGlobal: InstanceType<typeof PrismaClient> | undefined;
 }
 
-export const prisma: PrismaClient = global.prismaGlobal ?? new PrismaClient();
+export const prisma: InstanceType<typeof PrismaClient> =
+  global.prismaGlobal ?? new PrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   global.prismaGlobal = prisma;
