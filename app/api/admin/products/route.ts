@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getPublicUrl, uploadToR2 } from "@/lib/r2";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const AREA_PREFIX: Record<string, string> = {
   Kitchen: "A",
   Bedroom: "B",
