@@ -133,7 +133,8 @@ export default function ProductSheetApp() {
       quantity: p.quantity,
       price: p.price?.toString() ?? "",
       notes: p.notes,
-      image: null, // skipping image base64 to keep payload small
+      image: null, // prefer server-side fetch via imageUrl
+      imageUrl: p.imageUrl,
     }));
 
   const generateDocument = async () => {

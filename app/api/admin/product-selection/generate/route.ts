@@ -19,7 +19,8 @@ type IncomingProduct = {
   quantity?: string;
   price?: string;
   notes?: string;
-  image?: string | null;
+  image?: string | null; // base64
+  imageUrl?: string | null; // public URL to fetch
 };
 
 const CATEGORY_ORDER = [
@@ -126,9 +127,26 @@ export async function POST(req: Request) {
 
   const productsByCategory: Record<string, any[]> = {};
 
+  const fetchImageAsBase64 = async (url?: string | null) => {
+    if (!url) return "";
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return "";
+      const arrayBuffer = await resp.arrayBuffer();
+      return Buffer.from(arrayBuffer).toString("base64");
+    } catch {
+      return "";
+    }
+  };
+
   for (const raw of products as IncomingProduct[]) {
     const category = raw?.category || "Other";
     if (!productsByCategory[category]) productsByCategory[category] = [];
+
+    const base64 =
+      raw?.image && raw.image.length > 10
+        ? raw.image
+        : await fetchImageAsBase64(raw?.imageUrl);
 
     productsByCategory[category].push({
       code: raw?.code || "",
@@ -139,7 +157,7 @@ export async function POST(req: Request) {
       quantity: raw?.quantity || "",
       price: raw?.price || "",
       notes: raw?.notes || "",
-      image: raw?.image || "",
+      image: base64 || "",
     });
   }
 
