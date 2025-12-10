@@ -1,9 +1,5 @@
 import { requireAdmin } from "@/lib/auth";
-import dynamic from "next/dynamic";
-
-const ProductSheetApp = dynamic(() => import("./ProductSheetApp"), {
-  ssr: false,
-});
+import ProductSheetApp from "./ProductSheetApp";
 
 export default async function ProductSelectionPage() {
   await requireAdmin();
