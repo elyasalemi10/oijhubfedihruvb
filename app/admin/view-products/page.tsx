@@ -48,7 +48,7 @@ export default async function ViewProductsPage() {
               </tr>
             </thead>
             <tbody>
-              {products.map((p) => (
+              {products.map((p: typeof products[number]) => (
                 <tr key={p.id} className="border-t border-slate-100">
                   <td className="p-3 font-semibold">{p.code}</td>
                   <td className="p-3 font-semibold">{p.name}</td>
