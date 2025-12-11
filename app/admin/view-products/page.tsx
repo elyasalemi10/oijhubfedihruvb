@@ -12,6 +12,7 @@ export default async function ViewProductsPage() {
   const products = await prisma.product.findMany({
     orderBy: { createdAt: "desc" },
     take: 100,
+    include: { area: true },
   });
 
   return (
@@ -37,7 +38,7 @@ export default async function ViewProductsPage() {
             <thead>
               <tr className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <th className="p-3">Code</th>
-                <th className="p-3">Name</th>
+                <th className="p-3">Code</th>
                 <th className="p-3">Image</th>
                 <th className="p-3">Description</th>
                 <th className="p-3">Manufacturer</th>
@@ -51,27 +52,23 @@ export default async function ViewProductsPage() {
               {products.map((p: typeof products[number]) => (
                 <tr key={p.id} className="border-t border-slate-100">
                   <td className="p-3 font-semibold">{p.code}</td>
-                  <td className="p-3 font-semibold">{p.name}</td>
                   <td className="p-3">
-                    <div className="relative h-12 w-16 max-w-[120px]">
-                      {p.imageUrl ? (
-                        <Image
-                          src={p.imageUrl}
-                          alt={p.description}
-                          fill
-                          className="object-cover rounded border border-slate-200"
-                        />
-                      ) : (
-                        <div className="h-12 w-16 max-w-[120px] bg-slate-100 border border-slate-200 rounded" />
-                      )}
-                    </div>
+                    {p.imageUrl ? (
+                      <img
+                        src={p.imageUrl}
+                        alt={p.description}
+                        className="h-14 w-20 object-cover rounded border border-slate-200"
+                      />
+                    ) : (
+                      <div className="h-14 w-20 bg-slate-100 border border-slate-200 rounded" />
+                    )}
                   </td>
                   <td className="p-3">{p.description}</td>
                   <td className="p-3">
                     {p.manufacturerDescription || "—"}
                   </td>
                   <td className="p-3">{p.productDetails || "—"}</td>
-                  <td className="p-3">{p.area}</td>
+                  <td className="p-3">{p.area?.name || "—"}</td>
                   <td className="p-3">
                     {p.price !== null ? `$${p.price?.toString()}` : "—"}
                   </td>

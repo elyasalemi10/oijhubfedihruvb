@@ -5,20 +5,18 @@ import { useEffect, useMemo, useState } from "react";
 type ApiProduct = {
   id: string;
   code: string;
-  name: string;
-  area: string;
   description: string;
   manufacturerDescription: string | null;
   productDetails: string | null;
   price: number | null;
   imageUrl: string;
+  area: { id: string; name: string };
 };
 
 type SelectedProduct = {
   id: string;
   code: string;
-  name: string;
-  area: string;
+  areaName: string;
   description: string;
   manufacturerDescription: string | null;
   productDetails: string | null;
@@ -60,6 +58,10 @@ export default function ProductSheetApp() {
     const fetchProducts = async () => {
       setLoadingProducts(true);
       try {
+        if (search.trim().length < 2) {
+          setProducts([]);
+          return;
+        }
         const resp = await fetch(
           `/api/admin/products${search ? `?q=${encodeURIComponent(search)}` : ""}`,
           { signal: controller.signal }
@@ -99,6 +101,7 @@ export default function ProductSheetApp() {
         ...prev,
         {
           ...p,
+          areaName: p.area?.name || "Other",
           quantity: "",
           notes: "",
         },
@@ -124,16 +127,16 @@ export default function ProductSheetApp() {
 
   const buildPayloadProducts = () =>
     selected.map((p) => ({
-      category: p.area,
+      category: p.areaName,
       code: p.code,
       description: p.description,
       manufacturerDescription: p.manufacturerDescription,
       productDetails: p.productDetails,
-      areaDescription: p.area,
+      areaDescription: p.areaName,
       quantity: p.quantity,
       price: p.price?.toString() ?? "",
       notes: p.notes,
-      image: null, // prefer server-side fetch via imageUrl
+      image: null,
       imageUrl: p.imageUrl,
     }));
 
@@ -278,21 +281,21 @@ export default function ProductSheetApp() {
         <div className="card">
           <div className="flex justify-between items-center mb-4">
             <h2 className="card-title" style={{ margin: 0 }}>
-              📦 Products from database
+              📦 Products from database (search by code/description)
             </h2>
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products by name/code/description"
-              style={{ minWidth: "240px" }}
+              placeholder="Type at least 2 chars to search..."
+              style={{ minWidth: "260px" }}
             />
           </div>
 
           {loadingProducts && <p className="text-sm text-gray-500">Loading products...</p>}
 
-          {!loadingProducts && products.length === 0 && (
-            <p className="text-sm text-gray-500">No products found. Create products first.</p>
+          {!loadingProducts && products.length === 0 && search.trim().length >= 2 && (
+            <p className="text-sm text-gray-500">No products found.</p>
           )}
 
           {Object.keys(productsByArea).map((area) => (
@@ -300,41 +303,34 @@ export default function ProductSheetApp() {
               <div className="product-header">
                 <span className="product-title">{area}</span>
               </div>
-              <div className="grid grid-3">
+              <div className="grid grid-cols-1 gap-2">
                 {productsByArea[area].map((product) => {
                   const isSelected = selected.some((s) => s.id === product.id);
                   return (
-                    <div key={product.id} className="field" style={{ borderBottom: "1px solid #eee", paddingBottom: "0.75rem", marginBottom: "0.75rem" }}>
-                      <label>{product.code} — {product.name || product.description}</label>
-                      <p style={{ fontSize: "0.85rem", color: "#555", marginTop: "0.25rem" }}>
-                        {product.description}
-                      </p>
-                      {typeof product.price === "number" &&
-                        Number.isFinite(product.price) && (
-                          <p
-                            style={{
-                              fontSize: "0.85rem",
-                              color: "#111",
-                              marginTop: "0.2rem",
-                              fontWeight: 600,
-                            }}
-                          >
-                            ${product.price.toFixed(2)}
-                          </p>
-                        )}
-                      {product.productDetails && (
-                        <p style={{ fontSize: "0.8rem", color: "#777", marginTop: "0.2rem" }}>
-                          {product.productDetails}
-                        </p>
-                      )}
-                      <div className="flex gap-2" style={{ marginTop: "0.5rem" }}>
-                        <button
-                          className="btn-secondary btn-sm"
-                          onClick={() => toggleSelect(product)}
-                        >
-                          {isSelected ? "Remove" : "Add"}
-                        </button>
+                    <div
+                      key={product.id}
+                      className="flex items-center justify-between border border-slate-200 rounded px-3 py-2 text-sm"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-800">
+                          {product.code}
+                        </div>
+                        <div className="text-slate-600 truncate">
+                          {product.description}
+                        </div>
+                        {typeof product.price === "number" &&
+                          Number.isFinite(product.price) && (
+                            <div className="text-slate-900 font-semibold">
+                              ${product.price.toFixed(2)}
+                            </div>
+                          )}
                       </div>
+                      <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => toggleSelect(product)}
+                      >
+                        {isSelected ? "Remove" : "Add"}
+                      </button>
                     </div>
                   );
                 })}
@@ -346,42 +342,36 @@ export default function ProductSheetApp() {
         {selected.length > 0 && (
           <div className="card">
             <h2 className="card-title">✅ Selected products</h2>
-            <div className="grid grid-3">
+            <div className="space-y-2">
               {selected.map((item) => (
-                <div key={item.id} className="product-card">
-                  <div className="product-header">
-                    <span className="product-title">
-                      {item.code} — {item.name || item.description}
-                    </span>
-                    <button
-                      className="btn-danger btn-sm"
-                      onClick={() => toggleSelect(item)}
-                    >
-                      ✕ Remove
-                    </button>
+                <div
+                  key={item.id}
+                  className="flex flex-wrap items-center gap-3 border border-slate-200 rounded px-3 py-2 text-sm"
+                >
+                  <div className="font-semibold text-slate-800">
+                    {item.code}
                   </div>
-                  <p style={{ fontSize: "0.9rem", color: "#555" }}>{item.description}</p>
-                  {item.productDetails && (
-                    <p style={{ fontSize: "0.85rem", color: "#777" }}>{item.productDetails}</p>
-                  )}
-                  <div className="grid" style={{ marginTop: "0.5rem" }}>
-                    <div className="field">
-                      <label>Quantity</label>
-                      <input
-                        value={item.quantity}
-                        onChange={(e) => updateSelected(item.id, "quantity", e.target.value)}
-                        placeholder="Qty"
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Notes</label>
-                      <input
-                        value={item.notes}
-                        onChange={(e) => updateSelected(item.id, "notes", e.target.value)}
-                        placeholder="Notes/placement"
-                      />
-                    </div>
+                  <div className="text-slate-600 flex-1 min-w-[180px] truncate">
+                    {item.description}
                   </div>
+                  <input
+                    className="w-24 rounded border border-slate-300 px-2 py-1"
+                    placeholder="Qty"
+                    value={item.quantity}
+                    onChange={(e) => updateSelected(item.id, "quantity", e.target.value)}
+                  />
+                  <input
+                    className="flex-1 min-w-[160px] rounded border border-slate-300 px-2 py-1"
+                    placeholder="Notes"
+                    value={item.notes}
+                    onChange={(e) => updateSelected(item.id, "notes", e.target.value)}
+                  />
+                  <button
+                    className="btn-danger btn-sm"
+                    onClick={() => toggleSelect(item)}
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
             </div>

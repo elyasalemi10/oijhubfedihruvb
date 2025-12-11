@@ -17,34 +17,8 @@ type IncomingProduct = {
   price?: string;
   notes?: string;
   image?: string | null;
+  imageUrl?: string | null;
 };
-
-const CATEGORY_PREFIX: Record<string, string> = {
-  Kitchen: "A",
-  Bathroom: "E",
-  Bedroom: "B",
-  "Living Room": "C",
-  Laundry: "F",
-  Balcony: "G",
-  Patio: "D",
-  Other: "Z",
-};
-
-async function nextCodeForPrefix(prefix: string) {
-  const latest = await prisma.product.findFirst({
-    where: { code: { startsWith: prefix } },
-    orderBy: { code: "desc" },
-    select: { code: true },
-  });
-
-  const current =
-    latest && latest.code.startsWith(prefix)
-      ? Number(latest.code.slice(prefix.length)) || 0
-      : 0;
-
-  const nextNumber = current + 1;
-  return `${prefix}${String(nextNumber).padStart(3, "0")}`;
-}
 
 function buildProductDetails(p: IncomingProduct) {
   const parts: string[] = [];
@@ -81,17 +55,20 @@ export async function POST(req: Request) {
 
   try {
     for (const raw of products as IncomingProduct[]) {
-      const category = (raw?.category || "Other").trim() || "Other";
-      const prefix = CATEGORY_PREFIX[category] || CATEGORY_PREFIX.Other;
-      const code = await nextCodeForPrefix(prefix);
+      const areaName = (raw?.category || raw?.areaDescription || "Other").trim();
+      const code = raw?.code?.trim();
+      if (!code) {
+        throw new Error("Product code is required for all rows.");
+      }
 
-      const name =
+      const area =
+        (await prisma.area.findFirst({ where: { name: areaName } })) ||
+        (await prisma.area.create({ data: { name: areaName || "Other" } }));
+
+      const description =
         raw?.description?.trim() ||
-        raw?.code?.trim() ||
-        `Product ${code}` ||
-        "Product";
-
-      const description = raw?.description?.trim() || "N/A";
+        raw?.manufacturerDescription?.trim() ||
+        code;
       const manufacturerDescription =
         raw?.manufacturerDescription?.trim() || null;
       const productDetails = buildProductDetails(raw);
@@ -102,26 +79,27 @@ export async function POST(req: Request) {
           ? priceNumber
           : null;
 
-      let imageUrl = "https://placehold.co/600x600?text=No+Image";
+      let imageUrl = raw?.imageUrl?.trim() || "";
 
-      if (raw?.image) {
+      if (raw?.image && raw.image.length > 10) {
         const buffer = Buffer.from(raw.image, "base64");
-        const key = `product-sheet/${prefix}/${code}-${Date.now()}.jpg`;
-
+        const key = `product-sheet/${code}-${Date.now()}.jpg`;
         await uploadToR2({
           key,
           body: buffer,
           contentType: "image/jpeg",
         });
-
         imageUrl = getPublicUrl(key);
+      }
+
+      if (!imageUrl) {
+        imageUrl = "https://placehold.co/600x600?text=No+Image";
       }
 
       const product = await prisma.product.create({
         data: {
           code,
-          name,
-          area: category,
+          areaId: area.id,
           description,
           manufacturerDescription,
           productDetails,

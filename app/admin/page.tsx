@@ -49,6 +49,16 @@ export default async function AdminPage() {
                 View Products
               </Button>
             </Link>
+            <Link href="/admin/areas" className="w-full">
+              <Button variant="outline" className="w-full">
+                Manage Areas
+              </Button>
+            </Link>
+            <Link href="/admin/bwa" className="w-full">
+              <Button variant="outline" className="w-full">
+                BWA Import
+              </Button>
+            </Link>
           </div>
         </div>
       </div>

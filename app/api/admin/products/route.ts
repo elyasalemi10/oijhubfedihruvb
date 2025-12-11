@@ -6,32 +6,6 @@ import { getPublicUrl, uploadToR2 } from "@/lib/r2";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const AREA_PREFIX: Record<string, string> = {
-  Kitchen: "A",
-  Bedroom: "B",
-  "Living Room": "C",
-  Patio: "D",
-};
-
-async function nextCodeForArea(area: string) {
-  const prefix = AREA_PREFIX[area];
-  if (!prefix) throw new Error("Invalid area");
-
-  const latest = await prisma.product.findFirst({
-    where: { code: { startsWith: prefix } },
-    orderBy: { code: "desc" },
-    select: { code: true },
-  });
-
-  const current =
-    latest && latest.code.startsWith(prefix)
-      ? Number(latest.code.slice(1)) || 0
-      : 0;
-
-  const nextNumber = current + 1;
-  return `${prefix}${String(nextNumber).padStart(3, "0")}`;
-}
-
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -45,7 +19,6 @@ export async function GET(request: Request) {
         : {
             OR: [
               { code: { contains: q, mode: "insensitive" as const } },
-              { name: { contains: q, mode: "insensitive" as const } },
               { description: { contains: q, mode: "insensitive" as const } },
               {
                 manufacturerDescription: {
@@ -56,7 +29,7 @@ export async function GET(request: Request) {
               {
                 productDetails: { contains: q, mode: "insensitive" as const },
               },
-              { area: { contains: q, mode: "insensitive" as const } },
+              { area: { name: { contains: q, mode: "insensitive" as const } } },
             ],
           };
 
@@ -64,6 +37,7 @@ export async function GET(request: Request) {
       where,
       orderBy: { createdAt: "desc" },
       take: 50,
+      include: { area: true },
     });
 
     console.log("Found products:", products.length);
@@ -84,8 +58,8 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
 
-    const name = formData.get("name")?.toString() || "";
-    const area = formData.get("area")?.toString() || "";
+    const code = formData.get("code")?.toString() || "";
+    const areaId = formData.get("areaId")?.toString() || "";
     const description = formData.get("description")?.toString() || "";
     const manufacturerDescription =
       formData.get("manufacturerDescription")?.toString() || "";
@@ -93,15 +67,20 @@ export async function POST(request: Request) {
     const priceRaw = formData.get("price")?.toString() || "";
     const image = formData.get("image") as File | null;
 
-    if (!name.trim()) {
+    if (!code.trim()) {
       return NextResponse.json(
-        { error: "Product name is required." },
+        { error: "Product code is required." },
         { status: 400 }
       );
     }
 
-    if (!area || !AREA_PREFIX[area]) {
+    if (!areaId) {
       return NextResponse.json({ error: "Area is required." }, { status: 400 });
+    }
+
+    const area = await prisma.area.findUnique({ where: { id: areaId } });
+    if (!area) {
+      return NextResponse.json({ error: "Area not found." }, { status: 400 });
     }
 
     if (!description.trim()) {
@@ -118,11 +97,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const code = await nextCodeForArea(area);
     const buffer = Buffer.from(await image.arrayBuffer());
-    const key = `products/${AREA_PREFIX[area]}/${code}-${Date.now()}-${
-      image.name || "image"
-    }`;
+    const key = `products/${code}-${Date.now()}-${image.name || "image"}`;
 
     await uploadToR2({
       key,
@@ -135,14 +111,14 @@ export async function POST(request: Request) {
     const product = await prisma.product.create({
       data: {
         code,
-        name,
-        area,
+        areaId: area.id,
         description,
         manufacturerDescription: manufacturerDescription || null,
         productDetails: productDetails || null,
         price: price !== null && !Number.isNaN(price) ? price : null,
         imageUrl: getPublicUrl(key),
       },
+      include: { area: true },
     });
 
     return NextResponse.json({ product });

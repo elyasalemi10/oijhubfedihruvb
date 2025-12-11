@@ -2,17 +2,20 @@
 
 import imageCompression from "browser-image-compression";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import toast, { Toaster } from "react-hot-toast";
 
 import { Button } from "@/components/ui/button";
 
-type Area = "Kitchen" | "Bedroom" | "Living Room" | "Patio" | "";
+type Area = {
+  id: string;
+  name: string;
+};
 
 type ProductForm = {
   id: string;
-  name: string;
-  area: Area;
+  code: string;
+  areaId: string;
   description: string;
   manufacturerDescription: string;
   productDetails: string;
@@ -21,15 +24,15 @@ type ProductForm = {
   imagePreview: string | null;
 };
 
-const AREA_OPTIONS: Area[] = ["Kitchen", "Bedroom", "Living Room", "Patio"];
-
 export default function CreateProductForm() {
   const router = useRouter();
+  const [areas, setAreas] = useState<Area[]>([]);
+  const [loadingAreas, setLoadingAreas] = useState(false);
   const [forms, setForms] = useState<ProductForm[]>([
     {
       id: crypto.randomUUID(),
-      name: "",
-      area: "",
+      code: "",
+      areaId: "",
       description: "",
       manufacturerDescription: "",
       productDetails: "",
@@ -52,8 +55,8 @@ export default function CreateProductForm() {
       ...prev,
       {
         id: crypto.randomUUID(),
-        name: "",
-        area: "",
+        code: "",
+        areaId: "",
         description: "",
         manufacturerDescription: "",
         productDetails: "",
@@ -63,6 +66,22 @@ export default function CreateProductForm() {
       },
     ]);
   };
+
+  useEffect(() => {
+    const loadAreas = async () => {
+      setLoadingAreas(true);
+      try {
+        const res = await fetch("/api/admin/areas", { cache: "no-store" });
+        const data = await res.json();
+        setAreas(data.areas || []);
+      } catch (err) {
+        setError("Failed to load areas. Create one in Admin > Areas.");
+      } finally {
+        setLoadingAreas(false);
+      }
+    };
+    loadAreas();
+  }, []);
 
   const removeForm = (id: string) => {
     if (forms.length === 1) {
@@ -78,8 +97,8 @@ export default function CreateProductForm() {
 
     // Validate all forms
     for (const form of forms) {
-      if (!form.name.trim()) {
-        setError("Product name is required for all products.");
+      if (!form.code.trim()) {
+        setError("Product code is required for all products.");
         return;
       }
       if (!form.description.trim()) {
@@ -90,7 +109,7 @@ export default function CreateProductForm() {
         setError("Image is required for all products.");
         return;
       }
-      if (!form.area) {
+      if (!form.areaId) {
         setError("Area is required for all products.");
         return;
       }
@@ -111,7 +130,8 @@ export default function CreateProductForm() {
 
         const formData = new FormData();
         formData.append("name", form.name.trim());
-        formData.append("area", form.area);
+        formData.append("code", form.code.trim());
+        formData.append("areaId", form.areaId);
         formData.append("description", form.description.trim());
         formData.append(
           "manufacturerDescription",
@@ -184,16 +204,16 @@ export default function CreateProductForm() {
               <div className="space-y-4">
                 <div className="space-y-1">
                   <label className="block text-sm font-medium text-slate-700">
-                    Product Name<span className="text-red-600">*</span>
+                    Code<span className="text-red-600">*</span>
                   </label>
                   <input
                     type="text"
                     className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                    value={form.name}
+                    value={form.code}
                     onChange={(e) =>
-                      updateForm(form.id, { name: e.target.value })
+                      updateForm(form.id, { code: e.target.value.toUpperCase() })
                     }
-                    placeholder="e.g. Premium Flooring"
+                    placeholder="e.g. A001"
                     required
                   />
                 </div>
@@ -204,22 +224,19 @@ export default function CreateProductForm() {
                   </label>
                   <select
                     className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white"
-                    value={form.area}
+                    value={form.areaId}
                     onChange={(e) =>
-                      updateForm(form.id, { area: e.target.value as Area })
+                      updateForm(form.id, { areaId: e.target.value })
                     }
                     required
                   >
                     <option value="">Select area</option>
-                    {AREA_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
+                    {areas.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
                       </option>
                     ))}
                   </select>
-                  <p className="text-xs text-slate-500">
-                    Code will be auto-generated based on area
-                  </p>
                 </div>
 
                 <div className="space-y-1">
