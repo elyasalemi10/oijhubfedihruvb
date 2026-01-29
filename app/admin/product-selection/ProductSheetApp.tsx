@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type ApiProduct = {
   id: string;
@@ -26,7 +26,7 @@ type SelectedProduct = {
   notes: string;
 };
 
-type Message = { type: "success" | "error"; text: string };
+type Message = { type: "success" | "error" | "info"; text: string };
 
 const API_BASE = "/api/admin/product-selection";
 
@@ -34,6 +34,8 @@ export default function ProductSheetApp() {
   const [message, setMessage] = useState<Message | null>(null);
   const [generating, setGenerating] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [parsingPdf, setParsingPdf] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [address, setAddress] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -45,6 +47,10 @@ export default function ProductSheetApp() {
   const [search, setSearch] = useState("");
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const [selected, setSelected] = useState<SelectedProduct[]>([]);
+  const [pdfParseInfo, setPdfParseInfo] = useState<{
+    found: number;
+    notFound: string[];
+  } | null>(null);
 
   const productsByArea = useMemo(() => {
     return products.reduce<Record<string, ApiProduct[]>>((acc, p) => {
@@ -91,6 +97,22 @@ export default function ProductSheetApp() {
     return () => controller.abort();
   }, [search]);
 
+  const addProductToSelected = useCallback((p: ApiProduct) => {
+    setSelected((prev) => {
+      const exists = prev.find((s) => s.id === p.id);
+      if (exists) return prev;
+      return [
+        ...prev,
+        {
+          ...p,
+          areaName: p.area?.name || "Other",
+          quantity: "",
+          notes: "",
+        },
+      ];
+    });
+  }, []);
+
   const toggleSelect = (p: ApiProduct) => {
     setSelected((prev) => {
       const exists = prev.find((s) => s.id === p.id);
@@ -118,6 +140,109 @@ export default function ProductSheetApp() {
       prev.map((s) => (s.id === id ? { ...s, [field]: value } : s))
     );
   };
+
+  // PDF Upload Handler
+  const handlePdfUpload = useCallback(
+    async (file: File) => {
+      if (!file.type.includes("pdf") && !file.name.toLowerCase().endsWith(".pdf")) {
+        setMessage({ type: "error", text: "Please upload a PDF file" });
+        return;
+      }
+
+      setParsingPdf(true);
+      setMessage(null);
+      setPdfParseInfo(null);
+
+      try {
+        const formData = new FormData();
+        formData.append("pdf", file);
+
+        const res = await fetch(`${API_BASE}/parse-pdf`, {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setMessage({ type: "error", text: data?.error || "Failed to parse PDF" });
+          return;
+        }
+
+        if (!data.products || data.products.length === 0) {
+          setMessage({
+            type: "info",
+            text: data.notFoundCodes?.length
+              ? `No matching products found. Codes in PDF: ${data.extractedCodes?.join(", ") || "none"}`
+              : "No product codes found in the PDF.",
+          });
+          return;
+        }
+
+        // Add matching products to selection
+        for (const product of data.products) {
+          addProductToSelected(product);
+        }
+
+        setPdfParseInfo({
+          found: data.products.length,
+          notFound: data.notFoundCodes || [],
+        });
+
+        setMessage({
+          type: "success",
+          text: `Added ${data.products.length} products from PDF${
+            data.notFoundCodes?.length
+              ? `. ${data.notFoundCodes.length} codes not found.`
+              : ""
+          }`,
+        });
+      } catch (err) {
+        console.error("PDF parse error:", err);
+        setMessage({ type: "error", text: "Failed to parse PDF" });
+      } finally {
+        setParsingPdf(false);
+      }
+    },
+    [addProductToSelected]
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false);
+
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        handlePdfUpload(files[0]);
+      }
+    },
+    [handlePdfUpload]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleFileInput = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        handlePdfUpload(files[0]);
+      }
+      e.target.value = "";
+    },
+    [handlePdfUpload]
+  );
 
   const validate = () => {
     if (!address.trim()) return "Address is required";
@@ -204,18 +329,91 @@ export default function ProductSheetApp() {
 
         {message && (
           <div
-            className="card"
+            className="card message-card"
             style={{
-              background: message.type === "success" ? "#d4edda" : "#f8d7da",
+              background:
+                message.type === "success"
+                  ? "#d4edda"
+                  : message.type === "info"
+                  ? "#cce5ff"
+                  : "#f8d7da",
               border: `1px solid ${
-                message.type === "success" ? "#c3e6cb" : "#f5c6cb"
+                message.type === "success"
+                  ? "#c3e6cb"
+                  : message.type === "info"
+                  ? "#b8daff"
+                  : "#f5c6cb"
               }`,
-              color: message.type === "success" ? "#155724" : "#721c24",
+              color:
+                message.type === "success"
+                  ? "#155724"
+                  : message.type === "info"
+                  ? "#004085"
+                  : "#721c24",
             }}
           >
             {message.text}
           </div>
         )}
+
+        {/* PDF Upload Zone - BWA Only */}
+        <div className="card">
+          <h2 className="card-title">📄 Import from BWA PDF</h2>
+          <p className="text-sm text-gray-600 mb-3">
+            Upload a BWA quote/order PDF to automatically select matching products from your database.
+          </p>
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            className={`pdf-drop-zone ${isDragging ? "dragging" : ""} ${parsingPdf ? "parsing" : ""}`}
+          >
+            <input
+              type="file"
+              accept=".pdf,application/pdf"
+              onChange={handleFileInput}
+              className="pdf-input"
+              disabled={parsingPdf}
+            />
+            <div className="pdf-drop-content">
+              <div className={`pdf-icon ${parsingPdf ? "spinning" : ""}`}>
+                {parsingPdf ? (
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <circle cx="12" cy="12" r="10" strokeWidth="2" opacity="0.25" />
+                    <path d="M4 12a8 8 0 018-8" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                ) : (
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+              <p className="pdf-title">
+                {parsingPdf
+                  ? "Extracting products..."
+                  : isDragging
+                  ? "Drop PDF here"
+                  : "Upload BWA PDF"}
+              </p>
+              <p className="pdf-subtitle">
+                {parsingPdf
+                  ? "Matching product codes with database..."
+                  : "Drag and drop a BWA PDF, or click to browse"}
+              </p>
+            </div>
+          </div>
+
+          {pdfParseInfo && pdfParseInfo.notFound.length > 0 && (
+            <div className="not-found-codes">
+              <p className="text-sm font-medium text-amber-700 mb-1">
+                Codes not found in database:
+              </p>
+              <p className="text-xs text-amber-600">
+                {pdfParseInfo.notFound.join(", ")}
+              </p>
+            </div>
+          )}
+        </div>
 
         <div className="card">
           <h2 className="card-title">📄 Document Details</h2>
@@ -341,7 +539,17 @@ export default function ProductSheetApp() {
 
         {selected.length > 0 && (
           <div className="card">
-            <h2 className="card-title">✅ Selected products</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="card-title" style={{ margin: 0 }}>
+                ✅ Selected products ({selected.length})
+              </h2>
+              <button
+                className="btn-secondary btn-sm"
+                onClick={() => setSelected([])}
+              >
+                Clear all
+              </button>
+            </div>
             <div className="space-y-2">
               {selected.map((item) => (
                 <div
@@ -368,7 +576,7 @@ export default function ProductSheetApp() {
                   />
                   <button
                     className="btn-danger btn-sm"
-                    onClick={() => toggleSelect(item)}
+                    onClick={() => toggleSelect(item as unknown as ApiProduct)}
                   >
                     ✕
                   </button>
@@ -429,6 +637,12 @@ export default function ProductSheetApp() {
           margin-bottom: 1.5rem;
         }
 
+        .message-card {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
         .card-title {
           font-size: 1.1rem;
           font-weight: 600;
@@ -436,6 +650,92 @@ export default function ProductSheetApp() {
           display: flex;
           align-items: center;
           gap: 0.5rem;
+        }
+
+        /* PDF Upload Zone Styles */
+        .pdf-drop-zone {
+          position: relative;
+          border: 2px dashed #ddd;
+          border-radius: 12px;
+          padding: 2rem;
+          text-align: center;
+          transition: all 0.2s ease;
+          cursor: pointer;
+        }
+
+        .pdf-drop-zone:hover {
+          border-color: #00f0ff;
+          background: rgba(0, 240, 255, 0.03);
+        }
+
+        .pdf-drop-zone.dragging {
+          border-color: #00f0ff;
+          background: rgba(0, 240, 255, 0.08);
+        }
+
+        .pdf-drop-zone.parsing {
+          opacity: 0.7;
+          pointer-events: none;
+        }
+
+        .pdf-input {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          opacity: 0;
+          cursor: pointer;
+        }
+
+        .pdf-drop-content {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .pdf-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background: #f0f0f0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #666;
+          margin-bottom: 0.5rem;
+        }
+
+        .pdf-icon.spinning svg {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .pdf-drop-zone.dragging .pdf-icon {
+          background: rgba(0, 240, 255, 0.15);
+          color: #00f0ff;
+        }
+
+        .pdf-title {
+          font-weight: 600;
+          color: #333;
+        }
+
+        .pdf-subtitle {
+          font-size: 0.875rem;
+          color: #666;
+        }
+
+        .not-found-codes {
+          margin-top: 1rem;
+          padding: 0.75rem 1rem;
+          background: #fffbeb;
+          border: 1px solid #fcd34d;
+          border-radius: 8px;
         }
 
         .grid {
@@ -482,8 +782,8 @@ export default function ProductSheetApp() {
         select:focus,
         textarea:focus {
           outline: none;
-          border-color: #0066cc;
-          box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
+          border-color: #00f0ff;
+          box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.15);
         }
 
         textarea {
@@ -503,16 +803,18 @@ export default function ProductSheetApp() {
         }
 
         .btn-primary {
-          background: #0066cc;
-          color: white;
+          background: #00f0ff;
+          color: #36454f;
+          font-weight: 600;
         }
 
         .btn-primary:hover {
-          background: #0052a3;
+          background: #00d4e0;
         }
 
         .btn-primary:disabled {
           background: #999;
+          color: #fff;
           cursor: not-allowed;
         }
 
@@ -586,6 +888,22 @@ export default function ProductSheetApp() {
           margin-bottom: 1rem;
         }
 
+        .mb-3 {
+          margin-bottom: 0.75rem;
+        }
+
+        .text-sm {
+          font-size: 0.875rem;
+        }
+
+        .text-xs {
+          font-size: 0.75rem;
+        }
+
+        .text-gray-600 {
+          color: #666;
+        }
+
         .image-preview {
           width: 60px;
           height: 60px;
@@ -632,4 +950,3 @@ export default function ProductSheetApp() {
     </>
   );
 }
-
