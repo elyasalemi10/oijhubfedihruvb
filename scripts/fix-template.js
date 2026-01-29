@@ -107,3 +107,4 @@ console.log('  1. Remove the "Price" column from the table');
 console.log('  2. Open in Word and verify it looks correct');
 console.log('  3. Save and commit to Git\n');
 
+

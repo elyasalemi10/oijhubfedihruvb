@@ -22,3 +22,4 @@ NEXT_PUBLIC_TEMPLATE_URL=https://pub-b582ad6d283d4856ad81447d904f0691.r2.dev/tem
 - Fast CDN delivery
 - No build size limits
 
+
